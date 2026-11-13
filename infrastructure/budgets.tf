@@ -21,3 +21,4 @@ resource "azurerm_consumption_budget_subscription" "monthly" {
     contact_emails = [var.alert_email]
   }
 }
+
