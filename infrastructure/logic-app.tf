@@ -35,7 +35,7 @@ resource "azurerm_logic_app_trigger_http_request" "budget_alert" {
   })
 }
 
-resource "azurerm_logic_app_action_custom" "summarise_alet" {
+resource "azurerm_logic_app_action_custom" "summarise_alert" {
   name         = "SummariseBudgeAlert"
   logic_app_id = azurerm_logic_app_workflow.cost_alerts.id
   body = jsonencode({
@@ -44,8 +44,52 @@ resource "azurerm_logic_app_action_custom" "summarise_alet" {
     inputs = {
       budget_name    = "@triggerBody()?['data']?['alertContext']?['AlertData']?['BudgetName']"
       threshold_type = "@triggerBody()?['data']?['alertContext']?['AlertData']?['ThresholdType']"
+      budget_amount  = "@triggerBody()?['data']?['alertContext']?['AlertData']?['BudgetAmount']"
       spent_amount   = "@triggerBody()?['data']?['alertContext']?['AlertData']?['SpentAmount']"
+      forecasted_amount = "@triggerBody()?['data']?['alertContext']?['AlertData']?['ForecastedTotalForPeriod']"
+      currency       = "@triggerBody()?['data']?['alertContext']?['AlertData']?['Currency']"
       scope          = "@triggerBody()?['data']?['alertContext']?['AlertData']?['Scope']"
+
+      
     }
   })
+}
+
+resource "azurerm_logic_app_action_custom" "check_alert_type" {
+    name = "CheckAlertType"
+    logic_app_id = azurerm_logic_app_workflow.cost_alerts.id
+    body = jsonencode ({
+        type = "If"
+        expression = "@equals(outputs('SummariseBudgetAlert')?['threshold_type'], 'Forecasted')"
+        actions = {
+            PrepareForecastMessage = {
+                type = "Compose"
+                runAfter = {}
+                inputs = {
+                    alert_type = "Forecasted"
+                    budget_name = "@outputs('SummariseBudgetAlert')?['budget_name']"
+                    forecasted_amount = "@outputs('SummariseBudgetAlert')?['forecasted_amount']"
+                    currency = "@outputs('SummariseBudgetAlert')?['currency']"
+                }
+            }   
+        }
+        else = {
+            actions = {
+                PrepareActualMessage = {
+                    type = "Compose"
+                    runAfter = {}
+                    inputs = {
+                        alert_type = "Actual"
+                        budget_name = "@outputs('SummariseBudgetAlert')?['budget_name']"
+                        spent_amount = "@outputs('SummariseBudgetAlert')?['spent_amount']"
+                        currency = "@outputs('SummariseBudgetAlert')?['currency']"
+                    }
+                }
+            }
+        }
+        runAfter = {
+            SummariseBudgetAlert = ["Succeeded"]
+        }
+    })
+    depends_on = [azurerm_logic_app_action_custom.summarise_alet]
 }
